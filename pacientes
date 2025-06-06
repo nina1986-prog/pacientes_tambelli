@@ -1,0 +1,140 @@
+import { useEffect, useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { initializeApp } from "firebase/app";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+} from "firebase/auth";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  getDocs,
+} from "firebase/firestore";
+import {
+  getStorage,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
+
+export default function CanalPacientes() {
+  const [user, setUser] = useState(null);
+  const [login, setLogin] = useState("");
+  const [senha, setSenha] = useState("");
+  const [userData, setUserData] = useState(null);
+
+  const handleLogin = async () => {
+    try {
+      const res = await signInWithEmailAndPassword(auth, login, senha);
+      setUser(res.user);
+    } catch (err) {
+      alert("Login ou senha inválidos");
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (usuario) => {
+      if (usuario) {
+        setUser(usuario);
+        const docSnap = await getDoc(doc(db, "usuarios", usuario.uid));
+        if (docSnap.exists()) {
+          setUserData(docSnap.data());
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const uploadArquivo = async (e, path) => {
+    const file = e.target.files[0];
+    if (!file || !userData) return;
+    const storageRef = ref(storage, `${userData.uid}/${path}/${file.name}`);
+    await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(storageRef);
+    alert("Arquivo enviado com sucesso: " + url);
+  };
+
+  if (!user || !userData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardContent className="space-y-4 p-4">
+            <Label>Email</Label>
+            <Input value={login} onChange={e => setLogin(e.target.value)} />
+            <Label>Senha</Label>
+            <Input type="password" value={senha} onChange={e => setSenha(e.target.value)} />
+            <Button onClick={handleLogin}>Entrar</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (userData.tipo === "responsavel") {
+    return (
+      <div className="p-4">
+        <h1 className="text-xl font-bold mb-4">Bem-vindo, responsável por {userData.paciente}</h1>
+        <Tabs defaultValue="videos">
+          <TabsList>
+            <TabsTrigger value="videos">Vídeos</TabsTrigger>
+            <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
+            <TabsTrigger value="sessoes">Sessões</TabsTrigger>
+          </TabsList>
+          <TabsContent value="videos">
+            <Input type="file" onChange={e => uploadArquivo(e, "videos")} />
+          </TabsContent>
+          <TabsContent value="relatorios">
+            <Input type="file" onChange={e => uploadArquivo(e, "relatorios")} />
+          </TabsContent>
+          <TabsContent value="sessoes">
+            <p>Total: {userData.sessoes?.total || 0}</p>
+            <p>Usadas: {userData.sessoes?.usadas || 0}</p>
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  }
+
+  if (userData.tipo === "master") {
+    return (
+      <div className="p-4">
+        <h1 className="text-xl font-bold mb-4">Painel Master</h1>
+        <Tabs defaultValue="pacientes">
+          <TabsList>
+            <TabsTrigger value="pacientes">Pacientes</TabsTrigger>
+            <TabsTrigger value="customizacao">Customização</TabsTrigger>
+          </TabsList>
+          <TabsContent value="pacientes">
+            <p>Cadastrar, editar e monitorar pacientes no Firestore.</p>
+          </TabsContent>
+          <TabsContent value="customizacao">
+            <p>Configurações visuais futuras aqui.</p>
+          </TabsContent>
+        </Tabs>
+      </div>
+    );
+  }
+} 
